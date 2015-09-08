@@ -3,6 +3,8 @@
 
 #include "util/exception.hh"
 #include "util/mmap.hh"
+#include "util/scoped.hh"
+#include "util/libdivide.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -26,6 +28,7 @@ struct IdentityHash {
   template <class T> T operator()(T arg) const { return arg; }
 };
 
+
 class DivMod {
   public:
     explicit DivMod(std::size_t buckets) : buckets_(buckets) {}
@@ -48,6 +51,36 @@ class DivMod {
 
   private:
     std::size_t buckets_;
+};
+
+/**
+ * Use libdivide to do quicker division by the same divisor.
+ */
+class LibDivMod {
+  public:
+    explicit LibDivMod(std::size_t buckets) : buckets_(buckets), fast_buckets_(buckets) {}
+
+    static std::size_t RoundBuckets(std::size_t from) {
+      return from;
+    }
+
+    template <class It> It Ideal(It begin, uint64_t hash) const {
+      // equivalent to: begin + (hash % buckets_);
+      return begin + (hash - buckets_ * (hash / fast_buckets_));
+    }
+
+    template <class BaseIt, class OutIt> void Next(BaseIt begin, BaseIt end, OutIt &it) const {
+      if (++it == end) it = begin;
+    }
+
+    void Double() {
+      buckets_ *= 2;
+      fast_buckets_ = libdivide::divider<std::size_t>(buckets_);
+    }
+
+  private:
+    std::size_t buckets_;
+    libdivide::divider<std::size_t> fast_buckets_;
 };
 
 class Power2Mod {
