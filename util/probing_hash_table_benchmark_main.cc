@@ -76,8 +76,8 @@ template <class Mod> bool Test(uint64_t entries, int qsize, uint64_t lookups = 2
       q.pop();
     }
     it = table.Ideal(*p); // compute address in hash
-    q.push(BufferEntry<Table>(it, *p++));
     __builtin_prefetch(it);
+    q.push(BufferEntry<Table>(it, *p++));
   }
   
   // drain the queue
@@ -111,11 +111,13 @@ int main(int argc, char** argv) {
   int qsize = atoi(argv[1]);
   
   bool meaningless = false;
+  /*
   std::cout << "#Integer division\n";
   for (uint64_t i = 1; i <= 100000000ULL; i *= 10) {
     meaningless ^= util::Test<util::DivMod>(i, qsize);
   }
   std::cout << "#Masking\n";
+  */
   for (uint64_t i = 1; i <= 100000000ULL; i *= 10) {
     meaningless ^= util::Test<util::Power2Mod>(i, qsize);
   }
