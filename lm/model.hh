@@ -255,6 +255,9 @@ public:
   Sentence(const Model &model): model(model), sum(0), lookup(model.GetVocab(), model.GetSearch(), model.Order()), kEOS(model.GetVocabulary().EndSentence()) {}
   
   Width *GetBuf() { return buf; }
+  Width *GetBufEnd() { return buf + sizeof(buf)/sizeof(Width); }
+  
+  float GetSum() { return sum; }
   
   void Init() {
     this->ibuf = buf;
