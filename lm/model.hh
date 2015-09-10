@@ -33,6 +33,9 @@ template <class Search, class VocabularyT> class GenericModel : public base::Mod
   private:
     typedef base::ModelFacade<GenericModel<Search, VocabularyT>, State, VocabularyT> P;
   public:
+    typedef Search SearchType;
+    typedef VocabularyT VocabularyType;
+    
     // This is the model type returned by RecognizeBinary.
     static const ModelType kModelType;
 
@@ -103,6 +106,9 @@ template <class Search, class VocabularyT> class GenericModel : public base::Mod
       // Compiler should optimize this if away.
       return Search::kDifferentRest ? InternalUnRest(pointers_begin, pointers_end, first_length) : 0.0;
     }
+    
+    const Search &GetSearch() const { return search_; }
+    const VocabularyT &GetVocab() const { return vocab_; }
 
   private:
     FullScoreReturn ScoreExceptBackoff(const WordIndex *const context_rbegin, const WordIndex *const context_rend, const WordIndex new_word, State &out_state) const;
@@ -245,6 +251,8 @@ class Sentence {
 public:
   // TODO: model and vocab/search somewhat redundant
   Sentence(const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order): model(model), sum(0), lookup(vocab, search, order), kEOS(model.GetVocabulary().EndSentence()) {}
+  
+  Sentence(const Model &model): model(model), sum(0), lookup(model.GetVocab(), model.GetSearch(), model.Order()), kEOS(model.GetVocabulary().EndSentence()) {}
   
   Width *GetBuf() { return buf; }
   
