@@ -269,7 +269,7 @@ public:
   }
   
   /** Returns true if still needs to run. */
-  bool RunState() {
+  bool _RunState() {
     if(lookup.RunState())
       // more calls for the same word (different n-gram orders)
       return true;
@@ -290,6 +290,14 @@ public:
     // init for next word
     lookup.Init(state.words, state.words + state.length, *ibuf);
     return true;
+  }
+  
+  bool RunState() {
+    State new_state;
+    sum += model.FullScore(state, *ibuf, new_state).prob;
+    state = new_state;
+    
+    return (*ibuf++ != kEOS);
   }
   
 private:  

@@ -36,7 +36,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
   
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   
-  sentence.Init();
+  //sentence.Init();
   
   Width *t = sentence.GetBuf();
   const Width *const tend = sentence.GetBufEnd();
