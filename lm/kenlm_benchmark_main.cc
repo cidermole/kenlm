@@ -28,43 +28,55 @@ using namespace lm;
 using namespace lm::ngram;
 using namespace lm::ngram::detail;
 
-template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
   Width kEOS = model.GetVocabulary().EndSentence();
-  Width buf[4096];
+  Width buf[4096000];
   float sum = 0.0;
-  State state = model.BeginSentenceState(), new_state;
+  //State state = model.BeginSentenceState(), new_state;
   
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   
   sentence.Init();
   
-  while (std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf))) {
+  Width *t = sentence.GetBuf();
+  const Width *const tend = sentence.GetBufEnd();
+  
+  std::size_t got;
+  const Width *end;
+  if((got = util::ReadOrEOF(fd_in, buf, sizeof(buf)))) {
     UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
     got /= sizeof(Width);
-    const Width *end = buf + got;
-    // Alternating states
+    end = buf + got;
+  }
+  std::size_t more = util::ReadOrEOF(fd_in, buf, sizeof(buf));
+  assert(more == 0);
+
+  const Width *i;
+  for (i = buf; i != end; i++) {
+    /*
+    sum += model.FullScore(state, *i, new_state).prob;
+    state = (*i == kEOS) ? model.BeginSentenceState() : new_state;
+    */
     
-    const Width *i;
-    for (i = buf; i != end; i++) {
-      /*
-      sum += model.FullScore(state, *i, new_state).prob;
-      state = (*i == kEOS) ? model.BeginSentenceState() : new_state;
-      */
+    *t++ = *i;
+    assert(t != tend);
+    
+    // TODO: work in progress...
+    if(*i == kEOS) {
+      //sentence.
+      sentence.Init();
+      while(sentence.RunState());
+      // done here, can submit new work (in next while iteration)
+      sum += sentence.GetSum();
       
-      // TODO: work in progress...
-      
-      if(*i == kEOS) {
-        //sentence.
-        sentence.Init();
-      }
+      t = sentence.GetBuf();
     }
   }
-  std::cerr << "Probability sum is " << sum << std::endl;
-
-  std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
+  
+  std::cout << "Sum is " << sum << std::endl;
 }
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
   const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
