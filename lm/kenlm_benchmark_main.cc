@@ -59,8 +59,57 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
 
 template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
   const int nprefetch = 5;
-  Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
-  //const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order)
+  //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
+  int isent = 0;
+  bool prefetching = true;
+  
+  Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> *sentences[nprefetch];
+  
+  for(int i = 0; i < nprefetch; i++)
+    sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
+  
+  Width kEOS = model.GetVocabulary().EndSentence();
+  Width buf[4096];
+  float sum = 0.0;
+  while(std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf))) {
+    UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
+    got /= sizeof(Width);
+    
+    const Width *i;
+    const Width *end = buf + got;
+    Width *t = sentences[isent]->GetBuf();
+    const Width *tend = sentences[isent]->GetBufEnd();
+    for(i = buf; i != end && t != tend && *i != kEOS; i++)
+      *t = *i;
+    assert(t != tend);
+    *t = kEOS;
+    
+    sentences[isent]->Init();
+
+    if(prefetching) {
+      // TODO: prefetch ONLY here.
+      if(isent < nprefetch - 1)
+        isent++;
+      else {
+        isent = 0;
+        prefetching = false;
+      }
+    } else {
+      // TODO: prefetch and run here.
+      while(sentences[isent]->RunState()) {
+        if(++isent == nprefetch)
+          isent = 0;
+      }
+      
+      // done here, can submit new work (in next while iteration)
+      sum += sentences[isent]->GetSum();
+    }
+  }
+  
+  for(int i = 0; i < nprefetch; i++)
+    delete sentences[i];
+  
+  std::cout << "Sum is " << sum << std::endl;
 }
 
 //LM_NAME_MODEL(ProbingModel, detail::GenericModel<detail::HashedSearch<BackoffValue> LM_COMMA() ProbingVocabulary>);
