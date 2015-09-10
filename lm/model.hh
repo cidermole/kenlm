@@ -269,18 +269,19 @@ public:
   }
   
   /** Returns true if still needs to run. */
-  bool _RunState() {
+  bool RunState() {
     if(lookup.RunState())
       // more calls for the same word (different n-gram orders)
       return true;
     
     // have result of lookup for word
     sum += lookup.GetRet().prob;
-    state = lookup.GetOutState();
+    State new_state = lookup.GetOutState();
     for (const float *i = state.backoff + lookup.GetRet().ngram_length - 1; i < state.backoff + state.length; ++i) {
       sum += *i;
     }
-      
+    state = new_state;
+    
     //state = lookup.GetOutState(); // enough to do once
     //return (*i++ != kEOS);
 
@@ -292,7 +293,7 @@ public:
     return true;
   }
   
-  bool RunState() {
+  bool _RunState() {
     State new_state;
     sum += model.FullScore(state, *ibuf, new_state).prob;
     state = new_state;
