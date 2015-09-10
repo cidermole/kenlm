@@ -250,15 +250,32 @@ template<class Search, class VocabularyT, class Model, class Width>
 class Sentence {
 public:
   // TODO: model and vocab/search somewhat redundant
-  Sentence(const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order): model(model), sum(0), lookup(vocab, search, order), kEOS(model.GetVocabulary().EndSentence()) {}
+  Sentence(const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order): ibuf(buf), model(model), sum(0), lookup(vocab, search, order), kEOS(model.GetVocabulary().EndSentence()) {}
   
-  Sentence(const Model &model): model(model), sum(0), lookup(model.GetVocab(), model.GetSearch(), model.Order()), kEOS(model.GetVocabulary().EndSentence()) {}
+  Sentence(const Model &model): ibuf(buf), model(model), sum(0), lookup(model.GetVocab(), model.GetSearch(), model.Order()), kEOS(model.GetVocabulary().EndSentence()) {}
   
   Width *GetBuf() { return buf; }
   Width *GetBufEnd() { return buf + sizeof(buf)/sizeof(Width); }
   
+  void FeedInit() {
+    ibuf = buf;
+  }
+  
+  /** Returns true if still needs more data. omnomnom! */
+  bool FeedBuffer(const Width *&buf, const Width *buf_end) {
+    const Width* const end = GetBufEnd();
+    while(buf != buf_end && ibuf != end) {
+      *ibuf = *buf++;
+      if(*ibuf++ == kEOS)
+        return false;
+    }
+    assert(ibuf != end); // assume that each sentence fits into < 4096 chars.
+    return true;
+  }
+  
   float GetSum() { return sum; }
   
+  /** Must call this after FeedBuffer() and before any RunState() calls. */
   void Init() {
     this->ibuf = buf;
     this->sum = 0.0;
