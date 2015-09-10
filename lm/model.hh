@@ -22,8 +22,10 @@
 namespace util { class FilePiece; }
 
 namespace lm {
-namespace ngram {
+namespace ngram {  
 namespace detail {
+
+void CopyRemainingHistory(const WordIndex *from, State &out_state);
 
 // Should return the same results as SRI.
 // ModelFacade typedefs Vocabulary so we use VocabularyT to avoid naming conflicts.
@@ -123,6 +125,172 @@ template <class Search, class VocabularyT> class GenericModel : public base::Mod
 
     Search search_;
 };
+
+
+/**
+ * Keeping state for pipelined single hashtable queries: what was in
+ *  - ScoreExceptBackoff()
+ *  - ResumeScore()
+ * before.
+ * State-machine setting off queries for a succession of n-gram orders.
+ */
+template <class Search, class VocabularyT>
+class Lookup {
+public:
+  Lookup(const VocabularyT &vocab, const Search &search, unsigned char order): vocab_(vocab), search_(search), order_(order) {}
+  
+  void Init(const WordIndex *const context_rbegin, const WordIndex *const context_rend, const WordIndex new_word) {
+    order_minus_2 = 0;
+    
+    this->context_rbegin = context_rbegin;
+    this->context_rend = context_rend;
+    this->new_word = new_word;
+    this->node = typename Search::Node();
+    
+    assert(new_word < vocab_.Bound());
+    // ret.ngram_length contains the last known non-blank ngram length.
+    ret.ngram_length = 1;
+
+    typename Search::UnigramPointer uni(search_.LookupUnigram(new_word, node, ret.independent_left, ret.extend_left));
+    out_state.backoff[0] = uni.Backoff();
+    ret.prob = uni.Prob();
+    ret.rest = uni.Rest();
+
+    // This is the length of the context that should be used for continuation to the right.
+    out_state.length = HasExtension(out_state.backoff[0]) ? 1 : 0;
+    // We'll write the word anyway since it will probably be used and does no harm being there.
+    out_state.words[0] = new_word;
+    
+    hist_iter = context_rbegin;
+    backoff_out = out_state.backoff + 1;
+    
+    // prefetch first address, if necessary
+    if (context_rbegin == context_rend)
+      return;
+    // TODO: prefetch
+    // TODO: prefetch (Unigrams)
+  }
+  
+  /** Returns true if still needs to run. */
+  bool RunState() {
+    if (hist_iter == context_rend) return Final();
+    if (ret.independent_left) return Final();
+    if (order_minus_2 == Order() - 2) {
+      Longest();
+      return Final();
+    }
+
+    typename Search::MiddlePointer pointer(search_.LookupMiddle(order_minus_2, *hist_iter, node, ret.independent_left, ret.extend_left));
+    if (!pointer.Found()) return Final();
+    *backoff_out = pointer.Backoff();
+    ret.prob = pointer.Prob();
+    ret.rest = pointer.Rest();
+    ret.ngram_length = order_minus_2 + 2;
+    if (HasExtension(*backoff_out)) {
+      out_state.length = ret.ngram_length;
+    }
+    
+    // TODO: prefetch
+    
+    ++order_minus_2, ++hist_iter, ++backoff_out;
+    return true;
+  }
+  
+  State &GetOutState() { return out_state; }
+  
+  // TODO: contrary to the name, this score does not yet include backoffs.
+  FullScoreReturn &GetRet() { return ret; }
+  
+private:
+  unsigned char Order() { return order_; }
+  
+  void Longest() {
+    ret.independent_left = true;
+    typename Search::LongestPointer longest(search_.LookupLongest(*hist_iter, node));
+    if (longest.Found()) {
+      ret.prob = longest.Prob();
+      ret.rest = ret.prob;
+      // There is no blank in longest_.
+      ret.ngram_length = Order();
+    }
+  }
+    
+  bool Final() {
+    CopyRemainingHistory(context_rbegin, out_state);
+    return false;
+  }
+  
+  unsigned char order_minus_2;
+  FullScoreReturn ret;
+  typename Search::Node node;
+
+  const WordIndex *hist_iter;
+  float *backoff_out;
+  
+  const WordIndex *context_rbegin;
+  const WordIndex *context_rend;
+  WordIndex new_word;
+  State out_state;
+  
+  // from GenericModel
+  const VocabularyT &vocab_;
+  const Search &search_;
+  unsigned char order_;
+};
+
+
+
+template<class Search, class VocabularyT, class Model, class Width>
+class Sentence {
+public:
+  // TODO: model and vocab/search somewhat redundant
+  Sentence(const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order): model(model), sum(0), lookup(vocab, search, order), kEOS(model.GetVocabulary().EndSentence()) {}
+  
+  Width *GetBuf() { return buf; }
+  
+  void Init() {
+    this->ibuf = buf;
+    this->sum = 0.0;
+    this->state = model.BeginSentenceState(); // copy!!!
+    
+    // TODO: prefetch??
+    lookup.Init(state.words, state.words + state.length, *ibuf);
+  }
+  
+  /** Returns true if still needs to run. */
+  bool RunState() {
+    if(lookup.RunState())
+      // more calls for the same word (different n-gram orders)
+      return true;
+    
+    // have result of lookup for word
+    sum += lookup.GetRet().prob;
+    state = lookup.GetOutState();
+    for (const float *i = state.backoff + lookup.GetRet().ngram_length - 1; i < state.backoff + state.length; ++i) {
+      sum += *i;
+    }
+      
+    //state = lookup.GetOutState(); // enough to do once
+    //return (*i++ != kEOS);
+
+    if(*ibuf++ == kEOS) {
+      return false;
+    }
+    // init for next word
+    lookup.Init(state.words, state.words + state.length, *ibuf);
+    return true;
+  }
+  
+private:  
+  Width buf[4096];
+  Width *ibuf;
+  State state;
+  const Model &model;
+  float sum;
+  Lookup<Search, VocabularyT> lookup;
+  const Width kEOS;
+};
+
 
 } // namespace detail
 
