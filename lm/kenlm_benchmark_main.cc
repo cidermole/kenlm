@@ -24,7 +24,11 @@ template <class Model, class Width> void ConvertToBytes(const Model &model, int 
   }
 }
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+using namespace lm;
+using namespace lm::ngram;
+using namespace lm::ngram::detail;
+
+template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
   lm::ngram::State state[3];
   const lm::ngram::State *const begin_state = &model.BeginSentenceState();
   const lm::ngram::State *next_state = begin_state;
@@ -52,6 +56,15 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
   }
   std::cout << "Sum is " << sum << std::endl;
 }
+
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+  const int nprefetch = 5;
+  Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
+  //const Model &model, const VocabularyT &vocab, const Search &search, unsigned char order)
+}
+
+//LM_NAME_MODEL(ProbingModel, detail::GenericModel<detail::HashedSearch<BackoffValue> LM_COMMA() ProbingVocabulary>);
+
 
 template <class Model, class Width> void DispatchFunction(const Model &model, bool query) {
   if (query) {
