@@ -110,6 +110,9 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
       
       // done here, can submit new work (in next while iteration)
       sum += sentences[isent]->GetSum();
+      
+      t = sentences[isent]->GetBuf();
+      tend = sentences[isent]->GetBufEnd();
     }
   }
   
