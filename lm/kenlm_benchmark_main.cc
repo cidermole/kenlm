@@ -28,7 +28,7 @@ using namespace lm;
 using namespace lm::ngram;
 using namespace lm::ngram::detail;
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
   Width kEOS = model.GetVocabulary().EndSentence();
   Width buf[4096000];
   float sum = 0.0;
@@ -110,7 +110,7 @@ template <class Model, class Width> void __QueryFromBytes(const Model &model, in
 }
 
 
-template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
   const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
@@ -121,54 +121,44 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
   for(int i = 0; i < nprefetch; i++)
     sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
   
-  Width kEOS = model.GetVocabulary().EndSentence();
   Width buf[4096];
+  const Width *i = buf;
   float sum = 0.0;
-  Width *t = sentences[isent]->GetBuf();
-  const Width *tend = sentences[isent]->GetBufEnd();
-  while(std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf))) {
+  std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf)) / sizeof(Width);
+  while(got) {
     UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
-    got /= sizeof(Width);
-    
-    const Width *i;
-    const Width *end = buf + got;
-  
-    i = buf;
-    while(i != end) {
-      for(; i != end && t != tend && *i != kEOS; i++, t++)
-        *t = *i;
-      assert(t != tend); // assume that each sentence fits into < 4096 chars.
-      if(*i != kEOS) {
-        i = end;
-        continue;
-      }
-      *t = kEOS; // TODO: if very last sentence does not have end symbol, then that will not be fed...
-      
-      sentences[isent]->Init();
 
-      if(prefetching) {
-        // TODO: prefetch ONLY here.
-        if(isent < nprefetch - 1)
-          isent++;
-        else {
-          isent = 0;
-          prefetching = false;
-        }
+    if(sentences[isent]->FeedBuffer(i, buf + got)) {
+      got = util::ReadOrEOF(fd_in, buf, sizeof(buf)) / sizeof(Width);
+      i = buf;
+      // feed more data
+      continue;
+    }
+
+    sentences[isent]->Init();
+
+    if(prefetching) {
+      // TODO: prefetch ONLY here.
+      if(isent < nprefetch - 1) {
+        isent++;
+        continue;
       } else {
-        // TODO: prefetch and run here.
-        while(sentences[isent]->RunState()) {
-          if(++isent == nprefetch)
-            isent = 0;
-        }
-        
-        // done here, can submit new work (in next while iteration)
-        float f = sentences[isent]->GetSum();
-        std::cout << " partial sum " << f << std::endl;
-        sum += f;
+        isent = 0;
+        prefetching = false;
+      }
+    } else {
+      // TODO: prefetch and run here.
+      while(sentences[isent]->RunState()) {
+        if(++isent == nprefetch)
+          isent = 0;
       }
       
-      t = sentences[isent]->GetBuf();
-      tend = sentences[isent]->GetBufEnd();
+      // done here, can submit new work (in next while iteration)
+      float f = sentences[isent]->GetSum();
+      //std::cout << " partial sum " << f << std::endl;
+      sum += f;
+      
+      sentences[isent]->FeedInit();
     }
   }
   
