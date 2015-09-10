@@ -28,37 +28,20 @@ using namespace lm;
 using namespace lm::ngram;
 using namespace lm::ngram::detail;
 
-template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
-  lm::ngram::State state[3];
-  const lm::ngram::State *const begin_state = &model.BeginSentenceState();
-  const lm::ngram::State *next_state = begin_state;
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
   Width kEOS = model.GetVocabulary().EndSentence();
   Width buf[4096];
   float sum = 0.0;
-  uint64_t completed = 0;
-
-  double loaded = util::CPUTime();
-  std::cout << "After loading: ";
-  util::PrintUsage(std::cout);
-
+  State state = model.BeginSentenceState(), new_state;
   while (std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf))) {
     UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
     got /= sizeof(Width);
-    completed += got;
-    // Do even stuff first.
-    const Width *even_end = buf + (got & ~1);
+    const Width *end = buf + got;
     // Alternating states
     const Width *i;
-    for (i = buf; i != even_end;) {
-      sum += model.FullScore(*next_state, *i, state[1]).prob;
-      next_state = (*i++ == kEOS) ? begin_state : &state[1];
-      sum += model.FullScore(*next_state, *i, state[0]).prob;
-      next_state = (*i++ == kEOS) ? begin_state : &state[0];
-    }
-    // Odd corner case.
-    if (got & 1) {
-      sum += model.FullScore(*next_state, *i, state[2]).prob;
-      next_state = (*i++ == kEOS) ? begin_state : &state[2];
+    for (i = buf; i != end; i++) {
+      sum += model.FullScore(state, *i, new_state).prob;
+      state = (*i == kEOS) ? model.BeginSentenceState() : new_state;
     }
   }
   std::cerr << "Probability sum is " << sum << std::endl;
@@ -66,7 +49,7 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
   std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
   const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
