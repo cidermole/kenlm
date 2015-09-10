@@ -58,10 +58,11 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
     state = (*i == kEOS) ? model.BeginSentenceState() : new_state;
     */
     
+    // the same with class Sentence:
+    
     *t++ = *i;
     assert(t != tend);
     
-    // TODO: work in progress...
     if(*i == kEOS) {
       //sentence.
       sentence.Init();
@@ -77,7 +78,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 }
 
 
-template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
   lm::ngram::State state[3];
   const lm::ngram::State *const begin_state = &model.BeginSentenceState();
   const lm::ngram::State *next_state = begin_state;
@@ -109,7 +110,7 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
 }
 
 
-template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void _QueryFromBytes(const Model &model, int fd_in) {
   const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
@@ -131,32 +132,40 @@ template <class Model, class Width> void __QueryFromBytes(const Model &model, in
     
     const Width *i;
     const Width *end = buf + got;
-    for(i = buf; i != end && t != tend && *i != kEOS; i++, t++)
-      *t = *i;
-    assert(t != tend); // assume that each sentence fits into < 4096 chars.
-    if(*i != kEOS)
-      continue;
-    *t = kEOS; // TODO: if very last sentence does not have end symbol, then that will not be fed...
-    
-    sentences[isent]->Init();
-
-    if(prefetching) {
-      // TODO: prefetch ONLY here.
-      if(isent < nprefetch - 1)
-        isent++;
-      else {
-        isent = 0;
-        prefetching = false;
+  
+    i = buf;
+    while(i != end) {
+      for(; i != end && t != tend && *i != kEOS; i++, t++)
+        *t = *i;
+      assert(t != tend); // assume that each sentence fits into < 4096 chars.
+      if(*i != kEOS) {
+        i = end;
+        continue;
       }
-    } else {
-      // TODO: prefetch and run here.
-      while(sentences[isent]->RunState()) {
-        if(++isent == nprefetch)
-          isent = 0;
-      }
+      *t = kEOS; // TODO: if very last sentence does not have end symbol, then that will not be fed...
       
-      // done here, can submit new work (in next while iteration)
-      sum += sentences[isent]->GetSum();
+      sentences[isent]->Init();
+
+      if(prefetching) {
+        // TODO: prefetch ONLY here.
+        if(isent < nprefetch - 1)
+          isent++;
+        else {
+          isent = 0;
+          prefetching = false;
+        }
+      } else {
+        // TODO: prefetch and run here.
+        while(sentences[isent]->RunState()) {
+          if(++isent == nprefetch)
+            isent = 0;
+        }
+        
+        // done here, can submit new work (in next while iteration)
+        float f = sentences[isent]->GetSum();
+        std::cout << " partial sum " << f << std::endl;
+        sum += f;
+      }
       
       t = sentences[isent]->GetBuf();
       tend = sentences[isent]->GetBufEnd();
