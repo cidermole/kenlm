@@ -127,7 +127,7 @@ template <class EntryT, class HashT, class EqualT> class AutoProbing;
  * Uses linear probing to find value.
  * Only insert and lookup operations.
  */
-template <class EntryT, class HashT, class EqualT = std::equal_to<typename EntryT::Key>, class ModT = DivMod> class ProbingHashTable {
+template <class EntryT, class HashT, class EqualT = std::equal_to<typename EntryT::Key>, class ModT = LibDivMod> class ProbingHashTable {
   public:
     typedef EntryT Entry;
     typedef typename Entry::Key Key;
