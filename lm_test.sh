@@ -8,7 +8,7 @@ KENLM=/fs/syn0/dmadl/kenlm
 test=bigcorpus.perm.en.tail
 
 for model in train.bin/*; do
-    echo $(basename $model)
+    echo -n $(basename $model)
 
     # echo "Building vocab..." >&2
     $KENLM/bin/kenlm_benchmark vocab $model < "$test" > /tmp/lm.vocab 2>/dev/null

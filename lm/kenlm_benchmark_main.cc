@@ -300,10 +300,12 @@ int main(int argc, char *argv[]) {
   }
   if(argc > 3)
     nprefetch = atoi(argv[3]);
-  std::cout << "nprefetch = " << nprefetch << std::endl;
+  if(!strcmp(argv[1], "query"))
+    std::cout << "nprefetch = " << nprefetch << std::endl;
   double start = util::UserTime();
   Dispatch(argv[2], !strcmp(argv[1], "query"));
-  std::cout << "total_runtime = " << (util::UserTime() - start) << std::endl;
+  if(!strcmp(argv[1], "query"))
+    std::cout << "total_runtime = " << (util::UserTime() - start) << std::endl;
   util::PrintUsage(std::cerr);
   return 0;
 }
