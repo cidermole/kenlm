@@ -307,17 +307,19 @@ void Dispatch(const char *file, bool query) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-  if (argc != 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
+  if (argc < 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
     std::cerr
       << "Benchmark program for KenLM.  Intended usage:\n"
       << "#Convert text to vocabulary ids offline.  These ids are tied to a model.\n"
-      << argv[0] << " vocab $model <$text >$text.vocab\n"
+      << argv[0] << " vocab $model [nprefetch] <$text >$text.vocab\n"
       << "#Ensure files are in RAM.\n"
       << "cat $text.vocab $model >/dev/null\n"
       << "#Timed query against the model, including loading.\n"
       << "time " << argv[0] << " query $model <$text.vocab\n";
     return 1;
   }
+  if(argc > 3)
+    nprefetch = atoi(argv[3]);
   Dispatch(argv[2], !strcmp(argv[1], "query"));
   util::PrintUsage(std::cerr);
   return 0;
