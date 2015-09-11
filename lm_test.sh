@@ -15,8 +15,10 @@ divide() {
     echo $1 $2 | python -c 'from __future__ import division, print_function; import sys; nums = [float(n) for n in sys.stdin.readline().split(" ")]; print("%.4e" % (nums[0] / nums[1]))'
 }
 
+mkdir -p test
 for model in train.bin/*; do
     nlines_train=$(basename $model)
+    mkdir -p test/$nlines_train
     #echo -n $nlines_train
     
     # actually, about 100 less?? (should be ~18 less)
@@ -31,12 +33,12 @@ for model in train.bin/*; do
     
     # no prefetch (old)
     #./test.sh $model 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
-    per_lookup=$($KENLM/bin/kenlm_benchmark.old query $model < /tmp/lm.vocab 2>/dev/null | awk '/CPU_per_query/ { print $4 }')
+    per_lookup=$($KENLM/bin/kenlm_benchmark.old query $model < /tmp/lm.vocab 2>test/$nlines_train/old.err | tee test/$nlines_train/old.out | awk '/CPU_per_query/ { print $4 }')
     echo -n " $per_lookup"
     for nprefetch in 1 2 5 10; do
         # various prefetch models
         #./test.sh $model $nprefetch 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
-        per_lookup=$($KENLM/bin/kenlm_benchmark query $model $nprefetch < /tmp/lm.vocab 2>/dev/null | awk '/CPU_per_query/ { print $4 }')
+        per_lookup=$($KENLM/bin/kenlm_benchmark query $model $nprefetch < /tmp/lm.vocab 2>test/$nlines_train/$nprefetch.err | tee test/$nlines_train/$nprefetch.out | awk '/CPU_per_query/ { print $4 }')
         echo -n " $per_lookup"
     done
     echo ""

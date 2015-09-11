@@ -5,7 +5,7 @@ STEPS=15
 
 nlines=177776463
 MAX=$(expr $nlines - $NTEST)
-MIN=10
+MIN=2
 
 SIZES=$(python -c "
 from __future__ import division
@@ -29,9 +29,11 @@ MOSES_PATH=/fs/lofn0/dmadl/software/mosesdecoder; MOSES=$MOSES_PATH; export PATH
 
 mkdir -p train train.bin
 for ntrain in $SIZES; do
-    head -n $ntrain gigaword_uncompressed.txt > train/corpus.$ntrain
-    $MOSES/bin/lmplz -o 5 -S 80% -T /tmp < train/corpus.$ntrain > train/lm.$ntrain
-    $MOSES/bin/build_binary train/lm.$ntrain train.bin/$ntrain
+    (head -n $ntrain gigaword_uncompressed.txt > train/corpus.$ntrain;
+    $MOSES/bin/lmplz -o 5 -S 80% -T /tmp < train/corpus.$ntrain > train/lm.$ntrain;
+    $MOSES/bin/build_binary train/lm.$ntrain train.bin/$ntrain;
+    ) &
 done
+wait
 
 tail -n $NTEST gigaword_uncompressed.txt > test.txt
