@@ -8,7 +8,7 @@
 
 KENLM=/fs/syn0/dmadl/kenlm
 
-test=bigcorpus.perm.en.tail
+test=test.txt
 lookups=$(wc $test | awk '{ print $2 }')
 
 divide() {
