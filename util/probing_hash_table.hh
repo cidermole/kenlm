@@ -4,7 +4,7 @@
 #include "util/exception.hh"
 #include "util/mmap.hh"
 #include "util/scoped.hh"
-#include "util/libdivide.h"
+//#include "util/libdivide.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -14,7 +14,30 @@
 #include <cassert>
 #include <stdint.h>
 
+
+namespace libdivide {
+
+template<typename T, int ALGO>
+class divider;
+
+}
+
+
 namespace util {
+
+
+
+class Divider {
+public:
+  Divider(std::size_t divisor);
+  Divider(const Divider &other);
+  Divider &operator=(const Divider &other);
+  uint64_t divide(uint64_t num) const;
+  ~Divider();
+private:
+  util::scoped_ptr<libdivide::divider<std::size_t, -1> > fast_buckets_;
+  std::size_t divisor_;
+};
 
 /* Thrown when table grows too large */
 class ProbingSizeException : public Exception {
@@ -66,7 +89,7 @@ class LibDivMod {
 
     template <class It> It Ideal(It begin, uint64_t hash) const {
       // equivalent to: begin + (hash % buckets_);
-      return begin + (hash - buckets_ * (hash / fast_buckets_));
+      return begin + (hash - buckets_ * (fast_buckets_.divide(hash)));
     }
 
     template <class BaseIt, class OutIt> void Next(BaseIt begin, BaseIt end, OutIt &it) const {
@@ -75,12 +98,12 @@ class LibDivMod {
 
     void Double() {
       buckets_ *= 2;
-      fast_buckets_ = libdivide::divider<std::size_t>(buckets_);
+      fast_buckets_ = Divider(buckets_);
     }
 
   private:
     std::size_t buckets_;
-    libdivide::divider<std::size_t> fast_buckets_;
+    Divider fast_buckets_;
 };
 
 class Power2Mod {
