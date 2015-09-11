@@ -6,7 +6,7 @@
 # dmadl@syn:/fs/syn0/dmadl/bigcorpus$ wc bigcorpus.perm.en.tail 
 #  200000  3207891 17679412 bigcorpus.perm.en.tail
 
-KENLM=/fs/syn0/dmadl/kenlm
+KENLM=/fs/sif0/dmadl/kenlm
 
 test=test.txt
 lookups=$(wc $test | awk '{ print $2 }')
