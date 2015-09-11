@@ -39,7 +39,7 @@ MOSES_PATH=/fs/lofn0/dmadl/software/mosesdecoder; MOSES=$MOSES_PATH; export PATH
 
 mkdir -p train train.bin
 for ntrain in $SIZES; do
-    head -n $ntrain /fs/lofn0/dmadl/bigcorpus.perm.en.head > train/corpus.$ntrain
+    head -n $ntrain ../bigcorpus.perm.en.head > train/corpus.$ntrain
     $MOSES/bin/lmplz -o 5 -S 15% -T /tmp < train/corpus.$ntrain > train/lm.$ntrain
     $MOSES/bin/build_binary train/lm.$ntrain train.bin/$ntrain
 done
