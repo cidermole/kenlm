@@ -86,11 +86,16 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
   Width kEOS = model.GetVocabulary().EndSentence();
   Width buf[4096];
   float sum = 0.0;
-  while (true) {
-    std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
-    if (!got) break;
+  uint64_t completed = 0;
+
+  double loaded = util::CPUTime();
+  std::cout << "After loading: ";
+  util::PrintUsage(std::cout);
+
+  while (std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf))) {
     UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
     got /= sizeof(Width);
+    completed += got;
     // Do even stuff first.
     const Width *even_end = buf + (got & ~1);
     // Alternating states
@@ -107,8 +112,11 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
       next_state = (*i++ == kEOS) ? begin_state : &state[2];
     }
   }
-  std::cout << "Sum is " << sum << std::endl;
+  std::cerr << "Probability sum is " << sum << std::endl;
+
+  std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
+
 
 int nprefetch = 1;
 
@@ -118,6 +126,14 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   int isent = 0;
   bool prefetching = true;
   int n = 0;
+  
+  uint64_t completed = 0;
+
+  std::cerr << "nprefetch = " << nprefetch << std::endl;
+  
+  double loaded = util::CPUTime();
+  std::cout << "After loading: ";
+  util::PrintUsage(std::cout);
   
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> *sentences[nprefetch];
   
@@ -130,6 +146,7 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
   UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
   got /= sizeof(Width);
+  completed += got;
   //ibak = buf;
   while(got) {
     //std::cout << "Feeding from " << (i - buf) << " to isent " << isent << std::endl;
@@ -140,6 +157,7 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
       got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
       UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
       got /= sizeof(Width);
+      completed += got;
       //std::cout << "Read "<< got << "." << std::endl;
       i = buf;
       // feed more data
@@ -207,8 +225,10 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     delete sentences[i];
   */
   
-  std::cout << "n is " << n << std::endl;
-  std::cout << "Sum is " << sum << std::endl;
+  std::cerr << "n is " << n << std::endl;
+  std::cerr << "Probability sum is " << sum << std::endl;
+
+  std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
 // specialize...
@@ -287,25 +307,18 @@ void Dispatch(const char *file, bool query) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-  if (argc < 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
+  if (argc != 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
     std::cerr
       << "Benchmark program for KenLM.  Intended usage:\n"
       << "#Convert text to vocabulary ids offline.  These ids are tied to a model.\n"
-      << argv[0] << " vocab $model [nprefetch] <$text >$text.vocab\n"
+      << argv[0] << " vocab $model <$text >$text.vocab\n"
       << "#Ensure files are in RAM.\n"
       << "cat $text.vocab $model >/dev/null\n"
       << "#Timed query against the model, including loading.\n"
       << "time " << argv[0] << " query $model <$text.vocab\n";
     return 1;
   }
-  if(argc > 3)
-    nprefetch = atoi(argv[3]);
-  if(!strcmp(argv[1], "query"))
-    std::cout << "nprefetch = " << nprefetch << std::endl;
-  double start = util::UserTime();
   Dispatch(argv[2], !strcmp(argv[1], "query"));
-  if(!strcmp(argv[1], "query"))
-    std::cout << "total_runtime = " << (util::UserTime() - start) << std::endl;
   util::PrintUsage(std::cerr);
   return 0;
 }

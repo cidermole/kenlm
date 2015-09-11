@@ -19,6 +19,8 @@ while i >= min-1:
     i /= fac
 ")
 
+echo "$SIZES" > sizes.txt
+
 # about
 # 100 B - 100 GB language models
 # cat_compressed
