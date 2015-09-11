@@ -3,6 +3,7 @@
 
 #include "util/exception.hh"
 #include "util/scoped.hh"
+//#include "util/libdivide.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -12,7 +13,30 @@
 #include <cassert>
 #include <stdint.h>
 
+
+namespace libdivide {
+
+template<typename T, int ALGO>
+class divider;
+
+}
+
+
 namespace util {
+
+
+
+class Divider {
+public:
+  Divider(std::size_t divisor);
+  Divider(const Divider &other);
+  Divider &operator=(const Divider &other);
+  uint64_t divide(uint64_t num) const;
+  ~Divider();
+private:
+  util::scoped_ptr<libdivide::divider<std::size_t, -1> > fast_buckets_;
+  std::size_t divisor_;
+};
 
 /* Thrown when table grows too large */
 class ProbingSizeException : public Exception {
@@ -25,6 +49,7 @@ class ProbingSizeException : public Exception {
 struct IdentityHash {
   template <class T> T operator()(T arg) const { return arg; }
 };
+
 
 class DivMod {
   public:
@@ -48,6 +73,36 @@ class DivMod {
 
   private:
     std::size_t buckets_;
+};
+
+/**
+ * Use libdivide to do quicker division by the same divisor.
+ */
+class LibDivMod {
+  public:
+    explicit LibDivMod(std::size_t buckets) : buckets_(buckets), fast_buckets_(buckets) {}
+
+    static std::size_t RoundBuckets(std::size_t from) {
+      return from;
+    }
+
+    template <class It> It Ideal(It begin, uint64_t hash) const {
+      // equivalent to: begin + (hash % buckets_);
+      return begin + (hash - buckets_ * (fast_buckets_.divide(hash)));
+    }
+
+    template <class BaseIt, class OutIt> void Next(BaseIt begin, BaseIt end, OutIt &it) const {
+      if (++it == end) it = begin;
+    }
+
+    void Double() {
+      buckets_ *= 2;
+      fast_buckets_ = Divider(buckets_);
+    }
+
+  private:
+    std::size_t buckets_;
+    Divider fast_buckets_;
 };
 
 class Power2Mod {
@@ -95,7 +150,7 @@ template <class EntryT, class HashT, class EqualT> class AutoProbing;
  * Uses linear probing to find value.
  * Only insert and lookup operations.
  */
-template <class EntryT, class HashT, class EqualT = std::equal_to<typename EntryT::Key>, class ModT = DivMod> class ProbingHashTable {
+template <class EntryT, class HashT, class EqualT = std::equal_to<typename EntryT::Key>, class ModT = LibDivMod> class ProbingHashTable {
   public:
     typedef EntryT Entry;
     typedef typename Entry::Key Key;
