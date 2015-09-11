@@ -5,6 +5,7 @@
 #include "util/usage.hh"
 
 #include <stdint.h>
+#include <stdlib.h>
 
 namespace {
 
@@ -109,9 +110,10 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
   std::cout << "Sum is " << sum << std::endl;
 }
 
+int nprefetch = 1;
 
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
-  const int nprefetch = 2;
+  //const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
   bool prefetching = true;
@@ -282,17 +284,20 @@ void Dispatch(const char *file, bool query) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-  if (argc != 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
+  if (argc < 3 || (strcmp(argv[1], "vocab") && strcmp(argv[1], "query"))) {
     std::cerr
       << "Benchmark program for KenLM.  Intended usage:\n"
       << "#Convert text to vocabulary ids offline.  These ids are tied to a model.\n"
-      << argv[0] << " vocab $model <$text >$text.vocab\n"
+      << argv[0] << " vocab $model [nprefetch] <$text >$text.vocab\n"
       << "#Ensure files are in RAM.\n"
       << "cat $text.vocab $model >/dev/null\n"
       << "#Timed query against the model, including loading.\n"
       << "time " << argv[0] << " query $model <$text.vocab\n";
     return 1;
   }
+  if(argc > 3)
+    nprefetch = atoi(argv[3]);
+  std::cout << "nprefetch = " << nprefetch << std::endl;
   Dispatch(argv[2], !strcmp(argv[1], "query"));
   util::PrintUsage(std::cerr);
   return 0;
