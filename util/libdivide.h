@@ -72,8 +72,9 @@ typedef unsigned __int8 uint8_t;
 #endif
 
 #ifdef __cplusplus
+/* We DO NOT place libdivide within the anonymous namespace, to avoid compile warnings. Only used from probing_hash_table.cc, so probably fine. */
 /* We place libdivide within the libdivide namespace, and that goes in an anonymous namespace so that the functions are only visible to files that #include this header and don't get external linkage.  At least that's the theory. */
-namespace {
+//namespace {
 namespace libdivide {
 #endif
 
@@ -1328,5 +1329,5 @@ __m128i operator/(__m128i numer, const divider<int_type, ALGO> & denom) {
 #endif //LIBDIVIDE_HEADER_ONLY
 #ifdef __cplusplus
 } //close namespace libdivide
-} //close anonymous namespace
+//} //close anonymous namespace
 #endif
