@@ -111,7 +111,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 
 
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
-  const int nprefetch = 1;
+  const int nprefetch = 2;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
   bool prefetching = true;
@@ -123,18 +123,27 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
   
   Width buf[4096];
-  const Width *i = buf;
+  const Width *i = buf, *ibak;
   float sum = 0.0;
-  std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf)) / sizeof(Width);
+  std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
+  UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
+  got /= sizeof(Width);
+  ibak = buf;
   while(got) {
-    UTIL_THROW_IF2(got % sizeof(Width), "File size not a multiple of vocab id size " << sizeof(Width));
+    std::cout << "Feeding from " << (i - buf) << " to isent " << isent << std::endl;
+    ibak = i;
 
     if(sentences[isent]->FeedBuffer(i, buf + got)) {
-      got = util::ReadOrEOF(fd_in, buf, sizeof(buf)) / sizeof(Width);
+      std::cout << "Reading more..." << std::endl;
+      got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
+      UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
+      got /= sizeof(Width);
+      std::cout << "Read "<< got << "." << std::endl;
       i = buf;
       // feed more data
       continue;
     }
+    std::cout << "Fed " << (i - ibak) << " to isent " << isent << std::endl;
 
     sentences[isent]->Init();
 
@@ -159,14 +168,42 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     
     // done here, can submit new work (in next while iteration)
     float f = sentences[isent]->GetSum();
-    //std::cout << " partial sum " << f << std::endl;
+    std::cout << " isent " << isent << " partial sum " << f << std::endl;
     sum += f;
     
     sentences[isent]->FeedInit();
   }
+
+  // mark sentence as finished
+  delete sentences[isent];
+  sentences[isent] = NULL;
+  if(++isent == nprefetch)
+    isent = 0;
   
+  // when exiting the above loop, there is no more input data, 
+  // and we have finished sentences[isent].
+  // all other sentences still need advancing to the end.
+  for(int i = 0; i < nprefetch - 1; i++) {
+    while(sentences[isent]->RunState())
+      n++;
+    n++;
+    
+    // done here
+    float f = sentences[isent]->GetSum();
+    std::cout << " isent " << isent << " partial sum " << f << std::endl;
+    sum += f;
+    
+    // mark sentence as finished
+    delete sentences[isent];
+    sentences[isent] = NULL;
+    
+    if(++isent == nprefetch)
+      isent = 0;
+  }
+  /*
   for(int i = 0; i < nprefetch; i++)
     delete sentences[i];
+  */
   
   std::cout << "n is " << n << std::endl;
   std::cout << "Sum is " << sum << std::endl;
