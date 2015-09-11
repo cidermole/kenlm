@@ -236,6 +236,7 @@ void CopyRemainingHistory(const WordIndex *from, State &out_state) {
 }
 
 
+/*
 template <class Search, class VocabularyT> FullScoreReturn GenericModel<Search, VocabularyT>::ScoreExceptBackoff(
     const WordIndex *const context_rbegin,
     const WordIndex *const context_rend,
@@ -248,13 +249,14 @@ template <class Search, class VocabularyT> FullScoreReturn GenericModel<Search, 
   out_state = lookup.GetOutState();
   return lookup.GetRet();
 }
+*/
 
 /* Ugly optimized function.  Produce a score excluding backoff.
  * The search goes in increasing order of ngram length.
  * Context goes backward, so context_begin is the word immediately preceeding
  * new_word.
  */
-template <class Search, class VocabularyT> FullScoreReturn GenericModel<Search, VocabularyT>::__ScoreExceptBackoff(
+template <class Search, class VocabularyT> FullScoreReturn GenericModel<Search, VocabularyT>::ScoreExceptBackoff(
     const WordIndex *const context_rbegin,
     const WordIndex *const context_rend,
     const WordIndex new_word,

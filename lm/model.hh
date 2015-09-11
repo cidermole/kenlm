@@ -173,8 +173,11 @@ public:
     // prefetch first address, if necessary
     if (context_rbegin == context_rend)
       return;
-    // TODO: prefetch
-    // TODO: prefetch (Unigrams)
+    // TODO: could prefetch Unigrams (but then, move LookupUnigram to RunState()...)
+    
+    // prefetch
+    it = search_.LookupMiddleIterator(order_minus_2, *hist_iter, node);
+    __builtin_prefetch(it);
   }
   
   /** Returns true if still needs to run. */
@@ -186,7 +189,7 @@ public:
       return Final();
     }
 
-    typename Search::MiddlePointer pointer(search_.LookupMiddle(order_minus_2, *hist_iter, node, ret.independent_left, ret.extend_left));
+    typename Search::MiddlePointer pointer(search_.LookupMiddleFromIterator(order_minus_2, node, ret.independent_left, ret.extend_left, it));
     if (!pointer.Found()) return Final();
     *backoff_out = pointer.Backoff();
     ret.prob = pointer.Prob();
@@ -196,9 +199,14 @@ public:
       out_state.length = ret.ngram_length;
     }
     
-    // TODO: prefetch
-    
     ++order_minus_2, ++hist_iter, ++backoff_out;
+    
+    // prefetch
+    if (hist_iter != context_rend && order_minus_2 != Order() - 2) {
+      it = search_.LookupMiddleIterator(order_minus_2, *hist_iter, node);
+      __builtin_prefetch(it);
+    }
+    
     return true;
   }
   
@@ -229,6 +237,7 @@ private:
   unsigned char order_minus_2;
   FullScoreReturn ret;
   typename Search::Node node;
+  typename Search::Middle::ConstIterator it;
 
   const WordIndex *hist_iter;
   float *backoff_out;
@@ -293,11 +302,10 @@ public:
     
     // have result of lookup for word
     sum += lookup.GetRet().prob;
-    State new_state = lookup.GetOutState();
     for (const float *i = state.backoff + lookup.GetRet().ngram_length - 1; i < state.backoff + state.length; ++i) {
       sum += *i;
     }
-    state = new_state;
+    state = lookup.GetOutState();
     
     //state = lookup.GetOutState(); // enough to do once
     //return (*i++ != kEOS);

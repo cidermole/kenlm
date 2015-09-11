@@ -78,7 +78,7 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
 }
 
 
-template <class Model, class Width> void __QueryFromBytes(const Model &model, int fd_in) {
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
   lm::ngram::State state[3];
   const lm::ngram::State *const begin_state = &model.BeginSentenceState();
   const lm::ngram::State *next_state = begin_state;
@@ -110,11 +110,12 @@ template <class Model, class Width> void __QueryFromBytes(const Model &model, in
 }
 
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in) {
+template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
   const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
   bool prefetching = true;
+  int n = 0;
   
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> *sentences[nprefetch];
   
@@ -149,9 +150,11 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
     } else {
       // TODO: prefetch and run here.
       while(sentences[isent]->RunState()) {
+        n++;
         if(++isent == nprefetch)
           isent = 0;
       }
+      n++;
       
       // done here, can submit new work (in next while iteration)
       float f = sentences[isent]->GetSum();
@@ -165,7 +168,22 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
   for(int i = 0; i < nprefetch; i++)
     delete sentences[i];
   
+  std::cout << "n is " << n << std::endl;
   std::cout << "Sum is " << sum << std::endl;
+}
+
+// specialize...
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint8_t>(const lm::ngram::ProbingModel &model, int fd_in) {
+  QueryFromBytes_Hash<lm::ngram::ProbingModel, uint8_t>(model, fd_in);
+}
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint16_t>(const lm::ngram::ProbingModel &model, int fd_in) {
+  QueryFromBytes_Hash<lm::ngram::ProbingModel, uint16_t>(model, fd_in);
+}
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint32_t>(const lm::ngram::ProbingModel &model, int fd_in) {
+  QueryFromBytes_Hash<lm::ngram::ProbingModel, uint32_t>(model, fd_in);
+}
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint64_t>(const lm::ngram::ProbingModel &model, int fd_in) {
+  QueryFromBytes_Hash<lm::ngram::ProbingModel, uint64_t>(model, fd_in);
 }
 
 //LM_NAME_MODEL(ProbingModel, detail::GenericModel<detail::HashedSearch<BackoffValue> LM_COMMA() ProbingVocabulary>);

@@ -66,6 +66,7 @@ template <class Value> class HashedSearch {
     typedef typename Value::ProbingProxy UnigramPointer;
     typedef typename Value::ProbingProxy MiddlePointer;
     typedef ::lm::ngram::detail::LongestPointer LongestPointer;
+    typedef util::ProbingHashTable<typename Value::ProbingEntry, util::IdentityHash> Middle;
 
     static const ModelType kModelType = Value::kProbingModelType;
     static const bool kDifferentRest = Value::kDifferentRest;
@@ -105,6 +106,28 @@ template <class Value> class HashedSearch {
       return MiddlePointer(middle_[extend_length - 2].MustFind(extend_pointer)->value);
     }
 
+    /** Iterator lookup: first part of two-part LookupMiddle() split for prefetching */
+    typename Middle::ConstIterator LookupMiddleIterator(unsigned char order_minus_2, WordIndex word, Node &node) const {
+      node = CombineWordHash(node, word);
+      typename Middle::ConstIterator found;
+      //if (!middle_[order_minus_2].Find(node, found)) {
+      found = middle_[order_minus_2].Ideal(node);
+      return found;
+    }
+    
+    /** Actual lookup: second part of two-part LookupMiddle() split for prefetching */
+    MiddlePointer LookupMiddleFromIterator(unsigned char order_minus_2, Node &node, bool &independent_left, uint64_t &extend_pointer, typename Middle::ConstIterator it) const {
+      //node = CombineWordHash(node, word); // see above in LookupMiddleIterator()
+      if (!middle_[order_minus_2].FindFromIdeal(node, it)) {
+        independent_left = true;
+        return MiddlePointer();
+      }
+      extend_pointer = node;
+      MiddlePointer ret(it->value);
+      independent_left = ret.IndependentLeft();
+      return ret;
+    }
+    
     MiddlePointer LookupMiddle(unsigned char order_minus_2, WordIndex word, Node &node, bool &independent_left, uint64_t &extend_pointer) const {
       node = CombineWordHash(node, word);
       typename Middle::ConstIterator found;
@@ -178,7 +201,6 @@ template <class Value> class HashedSearch {
 
     Unigram unigram_;
 
-    typedef util::ProbingHashTable<typename Value::ProbingEntry, util::IdentityHash> Middle;
     std::vector<Middle> middle_;
 
     typedef util::ProbingHashTable<ProbEntry, util::IdentityHash> Longest;
