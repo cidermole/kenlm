@@ -111,7 +111,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 
 
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
-  const int nprefetch = 5;
+  const int nprefetch = 1;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
   bool prefetching = true;
@@ -147,22 +147,22 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
         isent = 0;
         prefetching = false;
       }
-    } else {
-      // TODO: prefetch and run here.
-      while(sentences[isent]->RunState()) {
-        n++;
-        if(++isent == nprefetch)
-          isent = 0;
-      }
-      n++;
-      
-      // done here, can submit new work (in next while iteration)
-      float f = sentences[isent]->GetSum();
-      //std::cout << " partial sum " << f << std::endl;
-      sum += f;
-      
-      sentences[isent]->FeedInit();
     }
+    
+    // TODO: prefetch and run here.
+    while(sentences[isent]->RunState()) {
+      n++;
+      if(++isent == nprefetch)
+        isent = 0;
+    }
+    n++;
+    
+    // done here, can submit new work (in next while iteration)
+    float f = sentences[isent]->GetSum();
+    //std::cout << " partial sum " << f << std::endl;
+    sum += f;
+    
+    sentences[isent]->FeedInit();
   }
   
   for(int i = 0; i < nprefetch; i++)
