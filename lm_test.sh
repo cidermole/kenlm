@@ -18,10 +18,11 @@ for model in train.bin/*; do
     
     # no prefetch (old)
     #./test.sh $model 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
-    $KENLM/bin/kenlm_benchmark.old query $model < /tmp/lm.vocab 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
+    $KENLM/bin/kenlm_benchmark.old query $model < /tmp/lm.vocab 2>/dev/null | awk '/total_runtime/ { printf " " $3 }'
     for nprefetch in 1 2 5 10; do
         # various prefetch models
         #./test.sh $model $nprefetch 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
-        $KENLM/bin/kenlm_benchmark query $model $nprefetch < /tmp/lm.vocab 2>/dev/null | awk '/total_runtime/ { print " " $3 }'
+        $KENLM/bin/kenlm_benchmark query $model $nprefetch < /tmp/lm.vocab 2>/dev/null | awk '/total_runtime/ { printf " " $3 }'
     done
+    echo ""
 done
