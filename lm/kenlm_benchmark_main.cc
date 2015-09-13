@@ -168,7 +168,6 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     sentences[isent]->Init();
 
     if(prefetching) {
-      // TODO: prefetch ONLY here.
       if(isent < nprefetch - 1) {
         isent++;
         continue;
@@ -178,7 +177,6 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
       }
     }
     
-    // TODO: prefetch and run here.
     while(sentences[isent]->RunState()) {
       n++;
       if(++isent == nprefetch)

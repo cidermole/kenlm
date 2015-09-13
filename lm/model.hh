@@ -173,11 +173,16 @@ public:
     // prefetch first address, if necessary
     if (context_rbegin == context_rend)
       return;
-    // TODO: could prefetch Unigrams (but then, move LookupUnigram to RunState()...)
     
     // prefetch
     it = search_.LookupMiddleIterator(order_minus_2, *hist_iter, node);
     __builtin_prefetch(it);
+    
+    if(Order() == 2) {
+      // in this case, instead of address calculation in RunState()
+      itl = search_.LookupLongestIterator(*hist_iter, node);
+      __builtin_prefetch(itl);
+    }
   }
   
   /** Returns true if still needs to run. */
@@ -296,7 +301,6 @@ public:
     this->sum = 0.0;
     this->state = model.BeginSentenceState(); // copy!!!
     
-    // TODO: prefetch??
     lookup.Init(state.words, state.words + state.length, *ibuf);
   }
   
@@ -312,9 +316,6 @@ public:
       sum += *i;
     }
     state = lookup.GetOutState();
-    
-    //state = lookup.GetOutState(); // enough to do once
-    //return (*i++ != kEOS);
 
     if(*ibuf++ == kEOS) {
       return false;
