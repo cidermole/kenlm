@@ -9,8 +9,8 @@ echo "Building vocab..." >&2
 bin/kenlm_benchmark vocab $LM_BIN < "$1" > /tmp/lm.vocab 2>/dev/null
 echo "Running benchmark..." >&2
 if [ $# -gt 1 ]; then
-	echo bin/kenlm_benchmark query $LM_BIN "$2" < /tmp/lm.vocab 2>/dev/null
-	time bin/kenlm_benchmark query $LM_BIN "$2" < /tmp/lm.vocab 2>/dev/null
+	echo bin/kenlm_benchmark query $LM_BIN "$2" < /tmp/lm.vocab
+	time bin/kenlm_benchmark query $LM_BIN "$2" < /tmp/lm.vocab
 else
 	time bin/kenlm_benchmark.old query $LM_BIN < /tmp/lm.vocab 2>/dev/null
 fi

@@ -202,9 +202,14 @@ public:
     ++order_minus_2, ++hist_iter, ++backoff_out;
     
     // prefetch
-    if (hist_iter != context_rend && order_minus_2 != Order() - 2) {
-      it = search_.LookupMiddleIterator(order_minus_2, *hist_iter, node);
-      __builtin_prefetch(it);
+    if (hist_iter != context_rend) {
+      if (order_minus_2 != Order() - 2) {
+        it = search_.LookupMiddleIterator(order_minus_2, *hist_iter, node);
+        __builtin_prefetch(it);
+      } else {
+        itl = search_.LookupLongestIterator(*hist_iter, node);
+        __builtin_prefetch(itl);
+      }
     }
     
     return true;
@@ -220,7 +225,7 @@ private:
   
   void Longest() {
     ret.independent_left = true;
-    typename Search::LongestPointer longest(search_.LookupLongest(*hist_iter, node));
+    typename Search::LongestPointer longest(search_.LookupLongestFromIterator(node, itl));
     if (longest.Found()) {
       ret.prob = longest.Prob();
       ret.rest = ret.prob;
@@ -238,6 +243,7 @@ private:
   FullScoreReturn ret;
   typename Search::Node node;
   typename Search::Middle::ConstIterator it;
+  typename Search::Longest::ConstIterator itl;
 
   const WordIndex *hist_iter;
   float *backoff_out;

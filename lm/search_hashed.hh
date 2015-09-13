@@ -67,6 +67,7 @@ template <class Value> class HashedSearch {
     typedef typename Value::ProbingProxy MiddlePointer;
     typedef ::lm::ngram::detail::LongestPointer LongestPointer;
     typedef util::ProbingHashTable<typename Value::ProbingEntry, util::IdentityHash> Middle;
+    typedef util::ProbingHashTable<ProbEntry, util::IdentityHash> Longest;
 
     static const ModelType kModelType = Value::kProbingModelType;
     static const bool kDifferentRest = Value::kDifferentRest;
@@ -141,6 +142,21 @@ template <class Value> class HashedSearch {
       return ret;
     }
 
+    typename Longest::ConstIterator LookupLongestIterator(WordIndex word, Node &node) const {
+      node = CombineWordHash(node, word);
+      //Node n = CombineWordHash(node, word);
+      typename Longest::ConstIterator found;
+      //found = longest_.Ideal(CombineWordHash(node, word));
+      found = longest_.Ideal(node);
+      return found;
+    }
+    
+    LongestPointer LookupLongestFromIterator(const Node &node, typename Longest::ConstIterator it) const {
+      // Sign bit is always on because longest n-grams do not extend left.
+      if (!longest_.FindFromIdeal(node, it)) return LongestPointer();
+      return LongestPointer(it->value.prob);
+    }
+    
     LongestPointer LookupLongest(WordIndex word, const Node &node) const {
       // Sign bit is always on because longest n-grams do not extend left.
       typename Longest::ConstIterator found;
@@ -203,7 +219,6 @@ template <class Value> class HashedSearch {
 
     std::vector<Middle> middle_;
 
-    typedef util::ProbingHashTable<ProbEntry, util::IdentityHash> Longest;
     Longest longest_;
 };
 
