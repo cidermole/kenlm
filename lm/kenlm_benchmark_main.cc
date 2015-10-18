@@ -9,6 +9,7 @@
 #include <vector>
 #include <sys/stat.h>
 #include <thread>
+#include <algorithm>
 
 namespace {
 
@@ -330,7 +331,10 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
 
   // spread the work
   size_t chunkSize = corpus.nsents() / nthreads;
-  size_t chunks[nthreads] = {chunkSize};
+  size_t chunks[nthreads];
+
+  // init chunks with chunkSize in every entry
+  std::fill_n(chunks, nthreads, chunkSize);
 
   // distribute remainder
   for(size_t i = 0; i < corpus.nsents() % nthreads; i++)
