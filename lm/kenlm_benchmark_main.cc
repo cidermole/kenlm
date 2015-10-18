@@ -47,11 +47,16 @@ public:
     UTIL_THROW_IF2(m_index.size() <= 1, "Empty file!");
   }
 
-  void getSentence(size_t isent, Width *target, size_t maxWords) const {
-    UTIL_THROW_IF2(isent >= m_index.size(), "Out of bounds!");
-    UTIL_THROW_IF2(m_index[isent+1] - m_index[isent] > maxWords, "Sentence too large!");
-    for(size_t i = m_index[isent]; i < m_index[isent+1]; i++)
+  /** Reads sentence isent into target, returning the number of words including </s>. */
+  size_t GetSentence(size_t isent, Width *target, Width *targetEnd) const {
+    UTIL_THROW_IF2(isent >= m_index.size() - 1, "Out of bounds!");
+    size_t nwords = m_index[isent+1] - m_index[isent];
+    //UTIL_THROW_IF2(nwords > maxWords, "Sentence too large!");
+    size_t i;
+    for(i = m_index[isent]; i < m_index[isent+1] && target != targetEnd; i++)
       *target++ = m_words[i];
+    UTIL_THROW_IF2(i < m_index[isent+1], "Sentence too large!");
+    return nwords;
   }
 
   size_t nsents() {
@@ -187,7 +192,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 
 int nprefetch = 1;
 
-template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in, int nthreads) {
+template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int fd_in, int nthreads, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end) {
   //const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
@@ -209,29 +214,15 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
   
   Width buf[4096];
-  const Width *i = buf; //, *ibak;
+  const Width *i = buf;
   float sum = 0.0;
-  std::size_t got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
-  UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
-  got /= sizeof(Width);
-  completed += got;
-  //ibak = buf;
-  while(got) {
-    //std::cout << "Feeding from " << (i - buf) << " to isent " << isent << std::endl;
-    //ibak = i;
 
-    if(sentences[isent]->FeedBuffer(i, buf + got)) {
-      //std::cout << "Reading more..." << std::endl;
-      got = util::ReadOrEOF(fd_in, buf, sizeof(buf));
-      UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
-      got /= sizeof(Width);
-      completed += got;
-      //std::cout << "Read "<< got << "." << std::endl;
-      i = buf;
-      // feed more data
-      continue;
-    }
-    //std::cout << "Fed " << (i - ibak) << " to isent " << isent << std::endl;
+  //while(got) {
+  for(size_t i = isent_begin; i < isent_end; i++) {
+    // get sentence from buffer
+    sentences[isent]->SetSize(corpus.GetSentence(i, sentences[isent]->GetBuf(), sentences[isent]->GetBufEnd()));
+
+    completed += sentences[isent]->Size();
 
     sentences[isent]->Init();
 
@@ -297,7 +288,17 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
-// specialize...
+template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in, int nthreads) {
+  Corpus<Model, Width> corpus(fd_in, model.GetVocabulary().EndSentence());
+
+  if(nthreads != 1)
+    std::cerr << "WARNING: ignoring nthreads (not implemented here)." << std::endl;
+
+  QueryFromBytes_Hash_Cache(model, fd_in, nthreads, corpus, 0, corpus.nsents());
+}
+
+
+  // specialize...
 template<> void QueryFromBytes<lm::ngram::ProbingModel, uint8_t>(const lm::ngram::ProbingModel &model, int fd_in, int nthreads) {
   QueryFromBytes_Hash<lm::ngram::ProbingModel, uint8_t>(model, fd_in, nthreads);
 }
