@@ -192,6 +192,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 
 
 size_t nprefetch = 1;
+size_t nthreads = 1;
 
 /*
 template<class Model, class Width>
@@ -226,7 +227,7 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   
   for(size_t i = 0; i < nprefetch; i++)
     sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
-  
+
   float sum = 0.0;
 
   //while(got) {
@@ -323,9 +324,6 @@ void call(const void *model, int ithread, const void* corpus, size_t isent_begin
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in, size_t nthreads) {
   Corpus<Model, Width> corpus(fd_in, model.GetVocabulary().EndSentence());
 
-  if(nthreads != 1)
-    std::cerr << "WARNING: ignoring nthreads (not implemented here)." << std::endl;
-
   float partialSum[nthreads], totalSum = 0.0;
   //std::thread *workers = new std::thread[nthreads];
   std::thread workers[nthreads];
@@ -341,6 +339,7 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   // start individual worker threads
   size_t sentOffset = 0;
   for(size_t i = 0; i < nthreads; i++) {
+    std::cerr << "worker " << i << " assigned sents " << sentOffset << " .. " << (sentOffset + chunks[i]) << std::endl;
     workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>,
                              static_cast<const void *>(&model), i, static_cast<const void *>(&corpus),
                              sentOffset, sentOffset + chunks[i],
@@ -451,7 +450,9 @@ int main(int argc, char *argv[]) {
   }
   if(argc > 3)
     nprefetch = atoi(argv[3]);
-  Dispatch(argv[2], !strcmp(argv[1], "query"), 1);
+  if(argc > 4)
+    nthreads = atoi(argv[4]);
+  Dispatch(argv[2], !strcmp(argv[1], "query"), nthreads);
   util::PrintUsage(std::cerr);
   return 0;
 }
