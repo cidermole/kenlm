@@ -191,7 +191,7 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 }
 
 
-int nprefetch = 1;
+size_t nprefetch = 1;
 
 /*
 template<class Model, class Width>
@@ -209,7 +209,7 @@ struct QfbhcParams {
 template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int ithread, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end, float &partialSumOut) {
   //const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
-  int isent = 0;
+  size_t isent = 0;
   bool prefetching = true;
   int n = 0;
   
@@ -224,11 +224,9 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> *sentences[nprefetch];
   
-  for(int i = 0; i < nprefetch; i++)
+  for(size_t i = 0; i < nprefetch; i++)
     sentences[i] = new Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width>(model);
   
-  Width buf[4096];
-  const Width *i = buf;
   float sum = 0.0;
 
   //while(got) {
@@ -278,7 +276,7 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   // when exiting the above loop, there is no more input data, 
   // and we have finished sentences[isent].
   // all other sentences still need advancing to the end.
-  for(int i = 0; i < nprefetch - 1 && i < nsents; i++) {
+  for(size_t i = 0; i < nprefetch - 1 && i < nsents; i++) {
     while(sentences[isent]->RunState())
       n++;
     n++;
