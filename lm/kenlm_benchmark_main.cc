@@ -251,16 +251,20 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
     sentences[isent]->FeedInit();
   }
 
+  const size_t nsents = isent_end - isent_begin;
+
   // mark sentence as finished
   delete sentences[isent];
   sentences[isent] = NULL;
   if(++isent == nprefetch)
     isent = 0;
+  if(isent >= nsents) // amendment for very short input (nsents < nprefetch).
+    isent = 0;
   
   // when exiting the above loop, there is no more input data, 
   // and we have finished sentences[isent].
   // all other sentences still need advancing to the end.
-  for(int i = 0; i < nprefetch - 1; i++) {
+  for(int i = 0; i < nprefetch - 1 && i < nsents; i++) {
     while(sentences[isent]->RunState())
       n++;
     n++;
