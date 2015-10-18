@@ -50,6 +50,8 @@
 path-constant TOP : . ;
 include $(TOP)/jam-files/sanity.jam ;
 
+requirements += <cxxflags>-std=c++11 ;
+
 boost 103600 ;
 project : requirements $(requirements) <include>. ;
 project : default-build <threading>multi <warnings>on <variant>release <link>static ;

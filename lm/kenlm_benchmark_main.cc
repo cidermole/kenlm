@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <sys/stat.h>
+#include <thread>
 
 namespace {
 
@@ -148,7 +149,7 @@ template <class Model, class Width> void _QueryFromBytes(const Model &model, int
 }
 
 
-template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in, int nthreads) {
+template <class Model, class Width> void QueryFromBytes(const Model &model, int fd_in, size_t nthreads) {
   lm::ngram::State state[3];
   const lm::ngram::State *const begin_state = &model.BeginSentenceState();
   const lm::ngram::State *next_state = begin_state;
@@ -192,7 +193,20 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 
 int nprefetch = 1;
 
-template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int fd_in, int nthreads, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end) {
+/*
+template<class Model, class Width>
+struct QfbhcParams {
+  const Model& model;
+  int ithread;
+  const Corpus<Model, Width>& corpus;
+  size_t isent_begin;
+  size_t isent_end;
+};
+*/
+
+// model, ithread, corpus, isent_begin, isent_end, partialSumOut
+
+template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int ithread, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end, float &partialSumOut) {
   //const int nprefetch = 5;
   //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
   int isent = 0;
@@ -201,7 +215,7 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   
   uint64_t completed = 0;
 
-  std::cerr << "nthreads = " << nthreads << std::endl;
+  std::cerr << "ithread = " << ithread << std::endl;
   std::cerr << "nprefetch = " << nprefetch << std::endl;
   
   double loaded = util::CPUTime();
@@ -289,37 +303,78 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   std::cerr << "n is " << n << std::endl;
   std::cerr << "Probability sum is " << sum << std::endl;
 
+  partialSumOut = sum;
+
   std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
-template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in, int nthreads) {
+                                                       // static_cast<const void *>(&model), i, &corpus, 0, corpus.nsents(), &partialSum[i], 0
+template<class Model, class Width> void QueryFromBytes_Hash_CacheX(const void *model, int ithread, const void* corpus, size_t isent_begin, size_t isent_end, float *partialSumOut, int unused) {
+  QueryFromBytes_Hash_Cache(*static_cast<const Model *>(model), ithread, *static_cast<const Corpus<Model, Width> *>(corpus), isent_begin, isent_end, *partialSumOut);
+}
+
+  /*
+template<class Model, class Width>
+//void call(const void* model, int ithread, const void* corpus, float *partialSumOut) {
+void call(const void *model, int ithread, const void* corpus, size_t isent_begin, size_t isent_end, float *partialSumOut, int unused) {
+  const Model *p = static_cast<const Model *>(model);
+  std::cout << "call(" << p << ")" << std::endl;
+}
+   */
+
+template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in, size_t nthreads) {
   Corpus<Model, Width> corpus(fd_in, model.GetVocabulary().EndSentence());
 
   if(nthreads != 1)
     std::cerr << "WARNING: ignoring nthreads (not implemented here)." << std::endl;
 
-  QueryFromBytes_Hash_Cache(model, fd_in, nthreads, corpus, 0, corpus.nsents());
+  float partialSum[nthreads], totalSum = 0.0;
+  //std::thread *workers = new std::thread[nthreads];
+  std::thread workers[nthreads];
+
+  // start individual worker threads
+  // TODO: sentence boundaries
+  for(size_t i = 0; i < nthreads; i++)
+    workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
+    //workers[i] = std::thread(QueryFromBytes_Hash_Cache<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
+    //workers[i] = std::move(std::thread(call));
+    //workers[i] = std::thread(call<Model, Width>, static_cast<const void *>(&model), 0, static_cast<const void *>(&corpus), &partialSum[i]);
+    //workers[i] = std::thread(call<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
+
+  //QueryFromBytes_Hash_Cache<Model, Width>(&model, 0, &corpus, 0, corpus.nsents(), &partialSum[0]);
+
+  // wait for results
+  for(size_t i = 0; i < nthreads; i++)
+    workers[i].join();
+
+  // collect individual workers' results
+  for(size_t i = 0; i < nthreads; i++)
+    totalSum += partialSum[i];
+
+  //delete[] workers;
+
+  std::cerr << "totalSum = " << totalSum << std::endl;
 }
 
 
   // specialize...
-template<> void QueryFromBytes<lm::ngram::ProbingModel, uint8_t>(const lm::ngram::ProbingModel &model, int fd_in, int nthreads) {
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint8_t>(const lm::ngram::ProbingModel &model, int fd_in, size_t nthreads) {
   QueryFromBytes_Hash<lm::ngram::ProbingModel, uint8_t>(model, fd_in, nthreads);
 }
-template<> void QueryFromBytes<lm::ngram::ProbingModel, uint16_t>(const lm::ngram::ProbingModel &model, int fd_in, int nthreads) {
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint16_t>(const lm::ngram::ProbingModel &model, int fd_in, size_t nthreads) {
   QueryFromBytes_Hash<lm::ngram::ProbingModel, uint16_t>(model, fd_in, nthreads);
 }
-template<> void QueryFromBytes<lm::ngram::ProbingModel, uint32_t>(const lm::ngram::ProbingModel &model, int fd_in, int nthreads) {
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint32_t>(const lm::ngram::ProbingModel &model, int fd_in, size_t nthreads) {
   QueryFromBytes_Hash<lm::ngram::ProbingModel, uint32_t>(model, fd_in, nthreads);
 }
-template<> void QueryFromBytes<lm::ngram::ProbingModel, uint64_t>(const lm::ngram::ProbingModel &model, int fd_in, int nthreads) {
+template<> void QueryFromBytes<lm::ngram::ProbingModel, uint64_t>(const lm::ngram::ProbingModel &model, int fd_in, size_t nthreads) {
   QueryFromBytes_Hash<lm::ngram::ProbingModel, uint64_t>(model, fd_in, nthreads);
 }
 
 //LM_NAME_MODEL(ProbingModel, detail::GenericModel<detail::HashedSearch<BackoffValue> LM_COMMA() ProbingVocabulary>);
 
 
-template <class Model, class Width> void DispatchFunction(const Model &model, bool query, int nthreads) {
+template <class Model, class Width> void DispatchFunction(const Model &model, bool query, size_t nthreads) {
   if (query) {
     QueryFromBytes<Model, Width>(model, 0, nthreads);
   } else {
@@ -327,7 +382,7 @@ template <class Model, class Width> void DispatchFunction(const Model &model, bo
   }
 }
 
-template <class Model> void DispatchWidth(const char *file, bool query, int nthreads) {
+template <class Model> void DispatchWidth(const char *file, bool query, size_t nthreads) {
   lm::ngram::Config config;
   config.load_method = util::READ;
   std::cerr << "Using load_method = READ." << std::endl;
@@ -344,7 +399,7 @@ template <class Model> void DispatchWidth(const char *file, bool query, int nthr
   }
 }
 
-void Dispatch(const char *file, bool query, int nthreads) {
+void Dispatch(const char *file, bool query, size_t nthreads) {
   using namespace lm::ngram;
   lm::ngram::ModelType model_type;
   if (lm::ngram::RecognizeBinary(file, model_type)) {
