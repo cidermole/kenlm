@@ -6,8 +6,72 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <vector>
+#include <sys/stat.h>
 
 namespace {
+
+template <class Model, class Width>
+class Corpus {
+public:
+  Corpus(int fd_in, Width kEOS): m_kEOS(kEOS) {
+    // Read entire corpus and index by sentence
+    Width buf[4096];
+    Width last = m_kEOS;
+    size_t got;
+
+    size_t fwords = fileSize(fd_in) / sizeof(Width);
+    // nice-to: reserve some space in advance
+    m_words.reserve(fwords);
+    // guess about 10 words per sentence
+    m_index.reserve(fwords / 10);
+
+    // first sentence index
+    m_index.push_back(0);
+
+    while((got = util::ReadOrEOF(fd_in, buf, sizeof(buf)))) {
+      UTIL_THROW_IF2(got % sizeof(Width), "File read size " << got << " not a multiple of vocab id size " << sizeof(Width));
+
+      Width *const end = buf + got / sizeof(Width);
+
+      for(Width *i = buf; i != end; i++) {
+        m_words.push_back(*i);
+        if(*i == m_kEOS)
+          m_index.push_back(m_words.size());
+        last = *i;
+      }
+    }
+
+    UTIL_THROW_IF2(last != m_kEOS, "Input binary file must end with word ID of </s>.");
+    //m_index.pop_back(); // NOTE: nothing starts here - points past the end. But we keep the sentinel.
+    UTIL_THROW_IF2(m_index.size() <= 1, "Empty file!");
+  }
+
+  void getSentence(size_t isent, Width *target, size_t maxWords) const {
+    UTIL_THROW_IF2(isent >= m_index.size(), "Out of bounds!");
+    UTIL_THROW_IF2(m_index[isent+1] - m_index[isent] > maxWords, "Sentence too large!");
+    for(size_t i = m_index[isent]; i < m_index[isent+1]; i++)
+      *target++ = m_words[i];
+  }
+
+  size_t nsents() {
+    return m_index.size() - 1; // exclude trailing sentinel
+  }
+
+private:
+  std::vector<size_t> m_index; //< index of sentence beginnings in m_words. Has trailing sentinel past the last sentence.
+  std::vector<Width> m_words; //< raw corpus: a sequence of word-IDs
+  Width m_kEOS; //< </s> end-of-sentence marker ID
+
+  /** Attempt to guess file size, return 0 otherwise. */
+  size_t fileSize(int fd_in) {
+    struct stat s;
+    if(fstat(fd_in, &s))
+      return 0;
+    return s.st_size;
+  }
+};
+
 
 template <class Model, class Width> void ConvertToBytes(const Model &model, int fd_in) {
   util::FilePiece in(fd_in);
