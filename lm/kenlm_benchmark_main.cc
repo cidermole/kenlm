@@ -332,16 +332,23 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   //std::thread *workers = new std::thread[nthreads];
   std::thread workers[nthreads];
 
-  // start individual worker threads
-  // TODO: sentence boundaries
-  for(size_t i = 0; i < nthreads; i++)
-    workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
-    //workers[i] = std::thread(QueryFromBytes_Hash_Cache<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
-    //workers[i] = std::move(std::thread(call));
-    //workers[i] = std::thread(call<Model, Width>, static_cast<const void *>(&model), 0, static_cast<const void *>(&corpus), &partialSum[i]);
-    //workers[i] = std::thread(call<Model, Width>, static_cast<const void *>(&model), i, static_cast<const void *>(&corpus), 0, corpus.nsents(), &partialSum[i], 0);
+  // spread the work
+  size_t chunkSize = corpus.nsents() / nthreads;
+  size_t chunks[nthreads] = {chunkSize};
 
-  //QueryFromBytes_Hash_Cache<Model, Width>(&model, 0, &corpus, 0, corpus.nsents(), &partialSum[0]);
+  // distribute remainder
+  for(size_t i = 0; i < corpus.nsents() % nthreads; i++)
+    chunks[i]++;
+
+  // start individual worker threads
+  size_t sentOffset = 0;
+  for(size_t i = 0; i < nthreads; i++) {
+    workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>,
+                             static_cast<const void *>(&model), i, static_cast<const void *>(&corpus),
+                             sentOffset, sentOffset + chunks[i],
+                             &partialSum[i], 0);
+    sentOffset += chunks[i];
+  }
 
   // wait for results
   for(size_t i = 0; i < nthreads; i++)
