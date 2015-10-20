@@ -194,22 +194,13 @@ template <class Model, class Width> void QueryFromBytes(const Model &model, int 
 }
 
 
-template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int ithread, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end, float &partialSumOut) {
-  //const int nprefetch = 5;
-  //Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> sentence(model);
+template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &model, int ithread, const Corpus<Model, Width>& corpus, size_t isent_begin, size_t isent_end, float &partialSumOut, uint64_t &completed) {
   size_t isent = 0;
   bool prefetching = true;
   int n = 0;
   
-  uint64_t completed = 0;
+  completed = 0;
 
-  std::cerr << "ithread = " << ithread << std::endl;
-  std::cerr << "nprefetch = " << nprefetch << std::endl;
-  
-  double loaded = util::CPUTime();
-  std::cout << "After loading: ";
-  util::PrintUsage(std::cout);
-  
   Sentence<typename Model::SearchType, typename Model::VocabularyType, Model, Width> *sentences[nprefetch];
   
   for(size_t i = 0; i < nprefetch; i++)
@@ -217,7 +208,6 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
 
   float sum = 0.0;
 
-  //while(got) {
   for(size_t i = isent_begin; i < isent_end; i++) {
     // get sentence from buffer
     sentences[isent]->SetSize(corpus.GetSentence(i, sentences[isent]->GetBuf(), sentences[isent]->GetBufEnd()));
@@ -285,23 +275,25 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   for(int i = 0; i < nprefetch; i++)
     delete sentences[i];
   */
-  
-  std::cerr << "n is " << n << std::endl;
-  std::cerr << "Probability sum is " << sum << std::endl;
 
   partialSumOut = sum;
-
-  std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
-template<class Model, class Width> void QueryFromBytes_Hash_CacheX(const void *model, int ithread, const void* corpus, size_t isent_begin, size_t isent_end, float *partialSumOut) {
-  QueryFromBytes_Hash_Cache(*static_cast<const Model *>(model), ithread, *static_cast<const Corpus<Model, Width> *>(corpus), isent_begin, isent_end, *partialSumOut);
+template<class Model, class Width> void QueryFromBytes_Hash_CacheX(const void *model, int ithread, const void* corpus, size_t isent_begin, size_t isent_end, float *partialSumOut, uint64_t *completed) {
+  QueryFromBytes_Hash_Cache(*static_cast<const Model *>(model), ithread, *static_cast<const Corpus<Model, Width> *>(corpus), isent_begin, isent_end, *partialSumOut, *completed);
 }
 
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
   Corpus<Model, Width> corpus(fd_in, model.GetVocabulary().EndSentence());
 
+  double loaded = util::CPUTime();
+  std::cout << "After loading: ";
+  util::PrintUsage(std::cout);
+
+  //////
+
   float partialSum[nthreads], totalSum = 0.0;
+  uint64_t completedWords[nthreads], completed = 0;
   std::thread workers[nthreads];
 
   // spread the work
@@ -318,11 +310,11 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   // start individual worker threads
   size_t sentOffset = 0;
   for(size_t i = 0; i < nthreads; i++) {
-    std::cerr << "worker " << i << " assigned sents " << sentOffset << " .. " << (sentOffset + chunks[i]) << std::endl;
+    //std::cerr << "worker " << i << " assigned sents " << sentOffset << " .. " << (sentOffset + chunks[i]) << std::endl;
     workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>,
                              static_cast<const void *>(&model), i, static_cast<const void *>(&corpus),
                              sentOffset, sentOffset + chunks[i],
-                             &partialSum[i]);
+                             &partialSum[i], &completedWords[i]);
     sentOffset += chunks[i];
   }
 
@@ -331,10 +323,13 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
     workers[i].join();
 
   // collect individual workers' results
-  for(size_t i = 0; i < nthreads; i++)
+  for(size_t i = 0; i < nthreads; i++) {
     totalSum += partialSum[i];
+    completed += completedWords[i];
+  }
 
-  std::cerr << "totalSum = " << totalSum << std::endl;
+  std::cout << "Sum is " << totalSum << std::endl;
+  std::cout << "CPU_excluding_load: " << (util::CPUTime() - loaded) << " CPU_per_query: " << ((util::CPUTime() - loaded) / static_cast<double>(completed)) << std::endl;
 }
 
 
