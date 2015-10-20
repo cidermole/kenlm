@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <sys/stat.h>
-#include <thread>
+#include <pthread.h>
 #include <algorithm>
 
 namespace {
@@ -279,8 +279,24 @@ template<class Model, class Width> void QueryFromBytes_Hash_Cache(const Model &m
   partialSumOut = sum;
 }
 
+struct QfbhcData {
+  const void *model;
+  int ithread;
+  const void* corpus;
+  size_t isent_begin;
+  size_t isent_end;
+  float *partialSumOut;
+  uint64_t *completed;
+};
+
 template<class Model, class Width> void QueryFromBytes_Hash_CacheX(const void *model, int ithread, const void* corpus, size_t isent_begin, size_t isent_end, float *partialSumOut, uint64_t *completed) {
   QueryFromBytes_Hash_Cache(*static_cast<const Model *>(model), ithread, *static_cast<const Corpus<Model, Width> *>(corpus), isent_begin, isent_end, *partialSumOut, *completed);
+}
+
+template<class Model, class Width> void *QueryFromBytes_Hash_CacheY(void *p) {
+  QfbhcData *d = static_cast<QfbhcData *>(p);
+  QueryFromBytes_Hash_CacheX<Model, Width>(d->model, d->ithread, d->corpus, d->isent_begin, d->isent_end, d->partialSumOut, d->completed);
+  return NULL;
 }
 
 template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, int fd_in) {
@@ -294,7 +310,8 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
 
   float partialSum[nthreads], totalSum = 0.0;
   uint64_t completedWords[nthreads], completed = 0;
-  std::thread workers[nthreads];
+  pthread_t workers[nthreads];
+  QfbhcData data[nthreads];
 
   // spread the work
   size_t chunkSize = corpus.nsents() / nthreads;
@@ -311,16 +328,25 @@ template<class Model, class Width> void QueryFromBytes_Hash(const Model &model, 
   size_t sentOffset = 0;
   for(size_t i = 0; i < nthreads; i++) {
     //std::cerr << "worker " << i << " assigned sents " << sentOffset << " .. " << (sentOffset + chunks[i]) << std::endl;
+/*
     workers[i] = std::thread(QueryFromBytes_Hash_CacheX<Model, Width>,
                              static_cast<const void *>(&model), i, static_cast<const void *>(&corpus),
                              sentOffset, sentOffset + chunks[i],
                              &partialSum[i], &completedWords[i]);
+*/
+
+    data[i] = { static_cast<const void *>(&model), i, static_cast<const void *>(&corpus),
+                        sentOffset, sentOffset + chunks[i],
+                        &partialSum[i], &completedWords[i] };
+
+    pthread_create(&workers[i], NULL, QueryFromBytes_Hash_CacheY<Model, Width>, &data[i]);
+
     sentOffset += chunks[i];
   }
 
   // wait for results
   for(size_t i = 0; i < nthreads; i++)
-    workers[i].join();
+    pthread_join(workers[i], NULL);
 
   // collect individual workers' results
   for(size_t i = 0; i < nthreads; i++) {
